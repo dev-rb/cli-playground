@@ -59,7 +59,7 @@ class AutocompleteText<T extends Option> extends Prompt {
     });
 
     this.on('value', () => {
-      const value = this.value;
+      const value = this.value as string;
       if (this.cursor >= value.length) {
         this.valueWithCursor = `${value}${color.inverse(color.hidden('_'))}`;
       } else {
@@ -68,14 +68,14 @@ class AutocompleteText<T extends Option> extends Prompt {
         this.valueWithCursor = `${s1}${color.inverse(s2)}${s2.slice(1)}`;
       }
 
-      const prev = this.value[value.length - 2];
-      const last = this.value[value.length - 1];
-
+      const last = value[value.length - 1];
       if (last === ':') return;
 
-      if (prev && last && prev === ':' && /\d+/.test(last)) {
-        const num = Number(last);
-        this.filteredOptions = this.options.filter((v, i) => i === num);
+      const m = value.match(/:(\d+)/);
+
+      if (m?.length && m[1]) {
+        const num = Number(m[1]);
+        this.filteredOptions = this.options.filter((_, i) => i === num);
         return;
       }
 
