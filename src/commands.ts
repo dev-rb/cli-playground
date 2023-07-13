@@ -1,7 +1,9 @@
 import { Key } from 'node:readline';
 import { Prompt } from '@clack/core';
-import { TextOptions } from '@clack/prompts';
+import { TextOptions, log } from '@clack/prompts';
 import color from 'picocolors';
+
+type Option = { value: any; label?: string; hint?: string };
 
 const availablePackages: { label: string; value: string }[] = [
   {
@@ -98,11 +100,24 @@ const opt = (
 };
 
 export const add = async () => {
-  const a = await new AutocompleteText({
+  const a = await autocomplete({
     options: availablePackages,
-    message: 'Test',
+    message: 'Add Packages',
+  });
+
+  console.log(a);
+};
+
+const autocomplete = <T extends Option>(opts: Omit<AutocompleteTextOptions<T>, 'render'>) => {
+  return new AutocompleteText({
+    options: opts.options,
+    message: opts.message,
+    validate: opts.validate,
+    placeholder: opts.placeholder,
+    defaultValue: opts.defaultValue,
+    initialValue: opts.initialValue,
     render() {
-      const title = `${color.gray(S_BAR)}\n  ${'Test'}\n`;
+      const title = `${color.gray(S_BAR)}\n  ${opts.message}\n`;
 
       const selected = this.selected
         .map((option, i) => `${color.red(S_CHECKBOX_SELECTED)} ${color.red(option.label)}`)
@@ -110,56 +125,54 @@ export const add = async () => {
 
       const selectedView = note(selected, 'Selected');
 
-      const value = this.value;
-      const textView = `${title}${color.cyan(S_BAR)}  ${value}\n${color.cyan(S_BAR_END)}\n`;
+      const value = typeof this.value === 'string' ? this.value : '';
+
+      const textView = `${color.cyan(S_BAR)}  ${value}\n${color.cyan(S_BAR_END)}\n`;
 
       const options = `${color.cyan(S_BAR)}  ${this.filteredOptions
         .map((option, i) => {
-          const selected = this.value.includes(option.value);
-          const active = i === this.cursor;
-          if (active && selected) {
-            return opt(option, 'active-selected');
-          }
-          if (selected) {
-            return opt(option, 'selected');
-          }
-          return opt(option, active ? 'active' : 'inactive');
+          const active = i === 0;
+          return `${i}: ` + opt(option, active ? 'active' : 'inactive');
         })
         .join(`\n${color.cyan(S_BAR)}  `)}\n${color.cyan(S_BAR_END)}\n`;
-      return `${selectedView}\n` + textView + options;
+      return title + `${selectedView}\n` + textView + options;
     },
-  }).prompt();
-  console.log('After', a);
+  }).prompt() as Promise<T[] | symbol>;
 };
 
-interface AutocompleteTextOptions extends TextOptions {
-  options: any[];
-  render: (this: Omit<AutocompleteText, 'prompt'>) => string | void;
+interface AutocompleteTextOptions<T extends Option> extends TextOptions {
+  options: T[];
+  render: (this: Omit<AutocompleteText<T>, 'prompt'>) => string | void;
 }
 
-class AutocompleteText extends Prompt {
+class AutocompleteText<T extends Option> extends Prompt {
   valueWithCursor = '';
-  options: any[];
+  options: T[];
+
   get cursor() {
     return this._cursor;
   }
 
-  filteredOptions: any[];
-  selected: any[];
-  constructor(opts: AutocompleteTextOptions) {
+  filteredOptions: T[];
+  selected: T[];
+
+  constructor(opts: AutocompleteTextOptions<T>) {
     super(opts);
 
     this.options = opts.options;
-    this.filteredOptions = [];
+    this.filteredOptions = opts.options;
     this.selected = [];
 
     this.customKeyPress = this.customKeyPress.bind(this);
+
     this.on('finalize', () => {
       if (!this.value) {
         this.value = opts.defaultValue;
       }
       this.valueWithCursor = this.value;
+      this.value = this.selected;
     });
+
     this.on('value', () => {
       const value = this.value;
       if (this.cursor >= value.length) {
@@ -170,13 +183,27 @@ class AutocompleteText extends Prompt {
         this.valueWithCursor = `${s1}${color.inverse(s2)}${s2.slice(1)}`;
       }
 
-      this.filteredOptions = this.options.filter((v) => v.value.startsWith(value));
+      const prev = this.value[value.length - 2];
+      const last = this.value[value.length - 1];
+
+      if (last === ':') return;
+
+      if (prev && last && prev === ':' && /\d+/.test(last)) {
+        const num = Number(last);
+        this.filteredOptions = this.options.filter((v, i) => i === num);
+        return;
+      }
+
+      this.filteredOptions = this.options.filter((v) =>
+        v[v.label ? 'label' : 'value']?.toLowerCase().startsWith(value.toLowerCase())
+      );
     });
+
     this.input.on('keypress', this.customKeyPress);
   }
 
   private customKeyPress(char: string, key?: Key) {
-    if (key?.name === 'tab') {
+    if (key?.name === 'e' && key?.ctrl) {
       const firstOption = this.filteredOptions[0];
       const has = this.selected.includes(firstOption);
       if (has) {
