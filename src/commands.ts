@@ -1,6 +1,6 @@
-import { autocomplete } from './autocomplete';
+import { Option, autocomplete } from './autocomplete';
 
-const availablePackages: { label: string; value: string }[] = [
+const availablePackages: Option[] = [
   {
     label: 'Unocss',
     value: 'unocss',

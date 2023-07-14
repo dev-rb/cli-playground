@@ -34,9 +34,17 @@ const search = <T extends Option>(values: T[], lookFor: string) => {
 
   const r = buildRegex(lookFor);
 
-  return !lookFor.length
-    ? values
-    : values.filter((v) => (v.group && r.test(v.group)) || r.test((v.label ?? v.value).toLowerCase()));
+  return !lookFor.length ? values : values.filter((v) => r.test((v.label ?? v.value).toLowerCase()));
+};
+
+const sortByGroup = <T extends Option>(options: T[]) => {
+  return [...options].sort((a, b) => {
+    if (a.group && b.group) return 0;
+
+    if (a.group && !b.group) return 1;
+
+    return -1;
+  });
 };
 
 const opt = (
@@ -74,6 +82,8 @@ class AutocompleteText<T extends Option> extends Prompt {
   filteredOptions: T[];
   selected: T[];
 
+  focusIndex: number = 0;
+
   constructor(opts: AutocompleteTextOptions<T>) {
     super(opts);
 
@@ -101,18 +111,34 @@ class AutocompleteText<T extends Option> extends Prompt {
         this.valueWithCursor = `${s1}${color.inverse(s2)}${s2.slice(1)}`;
       }
 
-      const last = value[value.length - 1];
-      if (last === ':') return;
-
       const indexSelector = value.match(/:(\d+)/);
+      if (!indexSelector) this.focusIndex = 0;
 
-      if (indexSelector?.length && indexSelector[1]) {
-        const index = Number(indexSelector[1]);
-        this.filteredOptions = this.options.filter((_, i) => i === index);
+      const last = value[value.length - 1];
+      if (last === ':') {
+        const tillSelector = value.slice(0, value.length - 1);
+
+        if (tillSelector.length > 0) {
+          this.filteredOptions = sortByGroup(search(this.options, tillSelector));
+        } else {
+          this.filteredOptions = sortByGroup(this.options);
+        }
+
         return;
       }
 
-      this.filteredOptions = search(this.options, value.toLowerCase());
+      if (indexSelector && indexSelector[1]) {
+        const index = Number(indexSelector[1]);
+
+        if (this.filteredOptions.length > 1 && index > this.filteredOptions.length - 1) {
+          this.state = 'error';
+          return;
+        }
+        this.focusIndex = index;
+        return;
+      }
+
+      this.filteredOptions = sortByGroup(search(this.options, value.toLowerCase()));
     });
 
     this.input.on('keypress', this.customKeyPress);
@@ -120,13 +146,12 @@ class AutocompleteText<T extends Option> extends Prompt {
 
   private customKeyPress(char: string, key?: Key) {
     if (key?.name === 'e' && key?.ctrl) {
-      const firstOption = this.filteredOptions[0];
-      const has = this.selected.includes(firstOption);
-      if (has) {
-        this.selected = this.selected.filter((v) => v !== firstOption);
+      const focusedOption = this.filteredOptions[this.focusIndex];
+      const selected = this.selected.find((v) => v?.value === focusedOption?.value) !== undefined;
+      if (selected) {
+        this.selected = this.selected.filter((v) => v !== focusedOption);
       } else {
-        this.selected =
-          this.filteredOptions?.length === 0 ? this.selected : [...this.selected, this.filteredOptions[0]];
+        this.selected = this.filteredOptions?.length === 0 ? this.selected : [...this.selected, focusedOption];
       }
     }
   }
@@ -156,44 +181,30 @@ export const autocomplete = <T extends Option>(opts: Omit<AutocompleteTextOption
       const textView = box(value, 'Search');
 
       const noResults = color.red('No results');
-      const [nongroups, groups] = this.filteredOptions.reduce(
-        (acc, c) => {
-          if (c.group) acc[1].push(c);
-          else acc[0].push(c);
-          return acc;
-        },
-        [[], []] as [T[], T[]]
-      );
-
-      let index = 0;
-      const solo = nongroups
-        .map((option) => {
-          const active = index === 0;
-          const selected = this.selected.find((v) => v.value === option.value) !== undefined;
-          return (
-            `${index++}: ` +
-            opt(option, selected ? (active ? 'active-selected' : 'selected') : active ? 'active' : 'inactive')
-          );
-        })
-        .join(`\n${color.cyan(S_BAR)}  `);
 
       let uniqueGroups = new Set();
-      const group = groups
-        .map((option) => {
-          const active = index === 0;
+      const filteredOptions = this.filteredOptions
+        .map((option, i) => {
+          const active = i === 0;
           const selected = this.selected.find((v) => v.value === option.value) !== undefined;
+          const has = option.group && uniqueGroups.has(option.group);
+          if (!has && option.group) {
+            uniqueGroups.add(option.group);
+          }
 
-          const has = uniqueGroups.has(option.group);
-          uniqueGroups.add(option.group);
+          const isFocused = this.focusIndex === i;
 
           return (
-            (has ? '' : `\n${option.group}\n`) +
-            `${index++}: ` +
-            opt(option, selected ? (active ? 'active-selected' : 'selected') : active ? 'active' : 'inactive')
+            (has || !option.group ? '' : `\n${color.cyan(S_BAR)}${option.group}`) +
+            `${(!has && option.group ? `\n${color.cyan(S_BAR)}  ` : '') + i}: ` +
+            (isFocused
+              ? color.bgBlack(`${color.white(S_CHECKBOX_INACTIVE)} ${color.white(option.label ?? option.value)}`)
+              : opt(option, selected ? (active ? 'active-selected' : 'selected') : active ? 'active' : 'inactive'))
           );
         })
         .join(`\n${color.cyan(S_BAR)}  `);
-      const options = `${color.cyan(S_BAR)}  ${this.filteredOptions.length ? solo + group : noResults}\n${color.cyan(
+
+      const options = `${color.cyan(S_BAR)}  ${this.filteredOptions.length ? filteredOptions : noResults}\n${color.cyan(
         S_BAR_END
       )}\n`;
 
