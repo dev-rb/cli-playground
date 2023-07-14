@@ -4,7 +4,40 @@ import { TextOptions } from '@clack/prompts';
 import { S_CHECKBOX_ACTIVE, S_CHECKBOX_SELECTED, S_CHECKBOX_INACTIVE, S_BAR, S_BAR_END, box } from './utils';
 import color from 'picocolors';
 
-export type Option = { value: any; label?: string; hint?: string };
+export type Option = { value: any; label?: string; hint?: string; group?: string };
+
+const buildRegex = (str: string) => {
+  let s = '';
+
+  for (let i = 0; i < str.length; i++) {
+    s += str[i] + '.*';
+  }
+
+  s = '.*' + s;
+
+  return RegExp(s);
+};
+
+const search = <T extends Option>(values: T[], lookFor: string) => {
+  const group = lookFor.match(/(\w+)\/(\w+)?/);
+
+  if (group) {
+    const groupData = values.filter((option) => option.group && option.group.includes(group[1]));
+
+    const sp = group[2];
+
+    if (!sp) return groupData;
+
+    const r = buildRegex(sp);
+    return groupData.filter((v) => r.test((v.label ?? v.value).toLowerCase()));
+  }
+
+  const r = buildRegex(lookFor);
+
+  return !lookFor.length
+    ? values
+    : values.filter((v) => (v.group && r.test(v.group)) || r.test((v.label ?? v.value).toLowerCase()));
+};
 
 const opt = (
   option: any,
@@ -71,17 +104,15 @@ class AutocompleteText<T extends Option> extends Prompt {
       const last = value[value.length - 1];
       if (last === ':') return;
 
-      const m = value.match(/:(\d+)/);
+      const indexSelector = value.match(/:(\d+)/);
 
-      if (m?.length && m[1]) {
-        const num = Number(m[1]);
-        this.filteredOptions = this.options.filter((_, i) => i === num);
+      if (indexSelector?.length && indexSelector[1]) {
+        const index = Number(indexSelector[1]);
+        this.filteredOptions = this.options.filter((_, i) => i === index);
         return;
       }
 
-      this.filteredOptions = this.options.filter((v) =>
-        v[v.label ? 'label' : 'value']?.toLowerCase().startsWith(value.toLowerCase())
-      );
+      this.filteredOptions = search(this.options, value.toLowerCase());
     });
 
     this.input.on('keypress', this.customKeyPress);
@@ -125,14 +156,44 @@ export const autocomplete = <T extends Option>(opts: Omit<AutocompleteTextOption
       const textView = box(value, 'Search');
 
       const noResults = color.red('No results');
-      const filteredOptions = this.filteredOptions
-        .map((option, i) => {
-          const active = i === 0;
-          return `${i}: ` + opt(option, active ? 'active' : 'inactive');
+      const [nongroups, groups] = this.filteredOptions.reduce(
+        (acc, c) => {
+          if (c.group) acc[1].push(c);
+          else acc[0].push(c);
+          return acc;
+        },
+        [[], []] as [T[], T[]]
+      );
+
+      let index = 0;
+      const solo = nongroups
+        .map((option) => {
+          const active = index === 0;
+          const selected = this.selected.find((v) => v.value === option.value) !== undefined;
+          return (
+            `${index++}: ` +
+            opt(option, selected ? (active ? 'active-selected' : 'selected') : active ? 'active' : 'inactive')
+          );
         })
         .join(`\n${color.cyan(S_BAR)}  `);
 
-      const options = `${color.cyan(S_BAR)}  ${this.filteredOptions.length ? filteredOptions : noResults}\n${color.cyan(
+      let uniqueGroups = new Set();
+      const group = groups
+        .map((option) => {
+          const active = index === 0;
+          const selected = this.selected.find((v) => v.value === option.value) !== undefined;
+
+          const has = uniqueGroups.has(option.group);
+          uniqueGroups.add(option.group);
+
+          return (
+            (has ? '' : `\n${option.group}\n`) +
+            `${index++}: ` +
+            opt(option, selected ? (active ? 'active-selected' : 'selected') : active ? 'active' : 'inactive')
+          );
+        })
+        .join(`\n${color.cyan(S_BAR)}  `);
+      const options = `${color.cyan(S_BAR)}  ${this.filteredOptions.length ? solo + group : noResults}\n${color.cyan(
         S_BAR_END
       )}\n`;
 
