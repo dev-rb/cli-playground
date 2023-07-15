@@ -157,6 +157,10 @@ class AutocompleteText<T extends Option> extends Prompt {
   }
 }
 
+const highlight = <T extends Option>(option: T) => {
+  return color.bgBlack(`${color.white(S_CHECKBOX_INACTIVE)} ${color.white(option.label ?? option.value)}`);
+};
+
 export const autocomplete = <T extends Option>(opts: Omit<AutocompleteTextOptions<T>, 'render'>) => {
   return new AutocompleteText({
     options: opts.options,
@@ -166,11 +170,9 @@ export const autocomplete = <T extends Option>(opts: Omit<AutocompleteTextOption
     defaultValue: opts.defaultValue,
     initialValue: opts.initialValue,
     render() {
-      const title = `${color.gray(S_BAR)}\n  ${opts.message}\n`;
+      const title = `${color.gray(S_BAR)}\n  ${color.bgBlue(color.black(opts.message))}\n`;
 
-      const selected = this.selected
-        .map((option, i) => `${color.red(S_CHECKBOX_SELECTED)} ${color.red(option.label)}`)
-        .join(' ');
+      const selected = this.selected.map((option, i) => `${color.red(option.label)}`).join(' ');
       const placeholder = opts.placeholder
         ? color.inverse(opts.placeholder[0]) + color.dim(opts.placeholder.slice(1))
         : color.inverse(color.hidden('_'));
@@ -194,13 +196,15 @@ export const autocomplete = <T extends Option>(opts: Omit<AutocompleteTextOption
 
           const isFocused = this.focusIndex === i;
 
-          return (
-            (has || !option.group ? '' : `\n${color.cyan(S_BAR)}${option.group}`) +
-            `${(!has && option.group ? `\n${color.cyan(S_BAR)}  ` : '') + i}: ` +
-            (isFocused
-              ? color.bgBlack(`${color.white(S_CHECKBOX_INACTIVE)} ${color.white(option.label ?? option.value)}`)
-              : opt(option, selected ? (active ? 'active-selected' : 'selected') : active ? 'active' : 'inactive'))
-          );
+          const state = selected ? (active ? 'active-selected' : 'selected') : active ? 'active' : 'inactive';
+
+          const spacing = i > 9 ? ' ' : '  ';
+
+          const groupView = `${
+            has || !option.group ? '' : `\n${color.cyan(S_BAR)}${color.bgBlue(color.black(option.group))}`
+          } ${!has && option.group ? `\n${color.cyan(S_BAR)}   ` : ''}`;
+
+          return groupView + `${i}:${spacing}` + (isFocused ? highlight(option) : opt(option, state));
         })
         .join(`\n${color.cyan(S_BAR)}  `);
 

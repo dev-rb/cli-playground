@@ -1,4 +1,7 @@
+import { confirm } from '@clack/prompts';
 import { Option, autocomplete } from './autocomplete';
+import { S_BAR } from './utils';
+import color from 'picocolors';
 
 const availablePackages: Option[] = [
   {
@@ -177,7 +180,6 @@ const availablePackages: Option[] = [
     group: 'packages',
   },
 ];
-
 export const add = async () => {
   const a = await autocomplete({
     options: availablePackages,
@@ -185,5 +187,17 @@ export const add = async () => {
     placeholder: 'Type a package name',
   });
 
-  console.log(a);
+  if (typeof a === 'object') {
+    const shouldInstall = await confirm({
+      message: `Install the following (${a.length}) packages? \n${color.red(S_BAR)} \n${color.red(S_BAR)}  ${
+        ' ' + color.yellow(a.map((opt) => opt.label).join(' ')) + ' '
+      } \n${color.red(S_BAR)} `,
+    });
+
+    if (shouldInstall) {
+      const values = a.map((opt) => opt.value);
+    }
+  }
+
+  // console.log(a);
 };
