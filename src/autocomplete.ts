@@ -145,7 +145,7 @@ class AutocompleteText<T extends Option> extends Prompt {
   }
 
   private customKeyPress(char: string, key?: Key) {
-    if (key?.name === 'e' && key?.ctrl) {
+    if (key?.name === 'tab') {
       const focusedOption = this.filteredOptions[this.focusIndex];
       const selected = this.selected.find((v) => v?.value === focusedOption?.value) !== undefined;
       if (selected) {
@@ -153,6 +153,7 @@ class AutocompleteText<T extends Option> extends Prompt {
       } else {
         this.selected = this.filteredOptions?.length === 0 ? this.selected : [...this.selected, focusedOption];
       }
+      this.rl.clearLine();
     }
   }
 }
@@ -176,11 +177,10 @@ export const autocomplete = <T extends Option>(opts: Omit<AutocompleteTextOption
       const placeholder = opts.placeholder
         ? color.inverse(opts.placeholder[0]) + color.dim(opts.placeholder.slice(1))
         : color.inverse(color.hidden('_'));
-      const selectedView = box(selected, 'Selected');
 
       const value = typeof this.value === 'string' ? (!this.value ? placeholder : this.valueWithCursor) : '';
 
-      const textView = box(value, 'Search');
+      const textView = 'Search: ' + value + '\n';
 
       const noResults = color.red('No results');
 
@@ -212,7 +212,7 @@ export const autocomplete = <T extends Option>(opts: Omit<AutocompleteTextOption
         S_BAR_END
       )}\n`;
 
-      return title + `${selectedView}\n` + textView + options;
+      return title + `Selected: ${selected}\n` + textView + options;
     },
   }).prompt() as Promise<T[] | symbol>;
 };
